@@ -17,13 +17,31 @@ import sklearn.model_selection
 import sklearn.svm
 
 
-# FYI: Objective functions can take additional arguments
-# (https://optuna.readthedocs.io/en/stable/faq.html#objective-func-additional-args).
-def objective(trial: optuna.Trial):
-    project_name = f"sklearn_simple_comet_sdk_{trial.study.study_name}"
+def log_trial_to_comet(study: optuna.Study, trial: optuna.trial.FrozenTrial) -> None:
+    """Logs a single trial for the given study to Comet."""
+    project_name = f"sklearn_simple_comet_sdk_{study.study_name}"
     experiment = Experiment(project_name=project_name)
     experiment.set_name(f"trail_{trial.number}")
 
+    experiment.log_parameters(trial.params)
+    experiment.log_metrics(
+        dic={
+            "value": trial.value,
+        },
+        step=0)
+    experiment.log_others({
+        "trial_number": trial.number,
+        "trial_datetime_start": trial.datetime_start,
+        "trial_system_attrs": trial.system_attrs,
+        "trial_user_attrs": trial.user_attrs,
+        "study_direction": study.direction,
+    })
+    experiment.end()
+
+
+# FYI: Objective functions can take additional arguments
+# (https://optuna.readthedocs.io/en/stable/faq.html#objective-func-additional-args).
+def objective(trial):
     iris = sklearn.datasets.load_iris()
     x, y = iris.data, iris.target
 
@@ -40,21 +58,6 @@ def objective(trial: optuna.Trial):
     score = sklearn.model_selection.cross_val_score(classifier_obj, x, y, n_jobs=-1, cv=3)
     accuracy = score.mean()
 
-    experiment.log_parameters(trial.params)
-    experiment.log_metrics(
-        dic={
-            "accuracy": accuracy,
-        },
-        step=0)
-    experiment.log_others({
-        "trial_number": trial.number,
-        "trial_datetime_start": trial.datetime_start,
-        "trial_system_attrs": trial.system_attrs,
-        "trial_user_attrs": trial.user_attrs,
-        "study_direction": trial.study.direction,
-    })
-    experiment.end()
-
     return accuracy
 
 
@@ -62,3 +65,6 @@ if __name__ == "__main__":
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=100)
     print(study.best_trial)
+
+    for trial in study.get_trials(deepcopy=False):
+        log_trial_to_comet(study, trial)
